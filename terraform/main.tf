@@ -333,4 +333,5 @@ output "ssh_command" {
 output "vm_id" {
   description = "Azure resource ID of the VM"
   value       = azurerm_linux_virtual_machine.vm.id
-}"# Updated" 
+}
+
