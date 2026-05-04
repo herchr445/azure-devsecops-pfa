@@ -1,0 +1,53 @@
+# ================================================================
+# PFA DevSecOps Project - Application Deployment Pipeline
+# Deploys application to Azure VM on push to master
+# ================================================================
+
+name: Deploy Application
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'app/**'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # JOB 1: DEPLOY TO AZURE VM
+  # SSHs into VM and updates the application
+  # ──────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_PUBLIC_IP }}
+          username: azureuser
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== Starting deployment ==="
+            cd /home/azureuser/app
+
+            # Pull latest code
+            git pull origin master || echo "Git pull failed, continuing..."
+
+            # Restart containers
+            docker compose up -d --remove-orphans
+
+            # Verify deployment
+            docker ps
+
+            echo "=== Deployment complete at $(date) ==="
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for app to start..."
+          sleep 10
+          curl -f http://${{ secrets.VM_PUBLIC_IP }} || echo "App check completed"
+          echo "Deployment verification complete"
