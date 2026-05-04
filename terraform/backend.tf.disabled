@@ -1,0 +1,22 @@
+# Terraform Backend Configuration
+# This tells Terraform to store its state file in Azure Storage
+# instead of locally on your computer
+
+terraform {
+  required_version = ">= 1.5.0"
+  
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.80"
+    }
+  }
+
+  backend "azurerm" {
+    resource_group_name  = "rg-rami-terraform-backend"
+    storage_account_name = "stramitfstate2024pfa"
+    container_name       = "tfstate"
+    key                  = "rami-pfa.tfstate"
+    use_azuread_auth     = false
+  }
+}

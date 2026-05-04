@@ -1,0 +1,21 @@
+# Terraform sensitive files - NEVER commit these
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/backup*/
+terraform/*.tfstate*
+
+# SSH Keys - NEVER commit
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# Environment files
+.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
