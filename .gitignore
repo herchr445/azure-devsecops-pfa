@@ -19,3 +19,9 @@ id_rsa.pub
 # OS files
 .DS_Store
 Thumbs.db
+
+# Python scripts output - NEVER commit
+scripts/app.env
+scripts/health_check_results.log
+scripts/infrastructure_report.txt
+*.env
