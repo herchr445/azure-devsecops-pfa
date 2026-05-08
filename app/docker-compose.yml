@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  app:
+    image: ramidevsecopspfa.azurecr.io/app:latest
+    container_name: pfa-dashboard
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+    restart: always
