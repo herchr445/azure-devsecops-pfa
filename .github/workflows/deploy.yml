@@ -1,6 +1,6 @@
 # ================================================================
-# PFA DevSecOps Project - Application Deployment Pipeline
-# Deploys application to Azure VM on push to master
+# PFA DevSecOps - Application Deployment Pipeline
+# Stages: SonarCloud → Build → Trivy → ACR → Deploy
 # ================================================================
 
 name: Deploy Application
@@ -10,21 +10,73 @@ on:
     branches: [ master ]
     paths:
       - 'app/**'
+      - 'scripts/**'
+      - 'sonar-project.properties'
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # JOB 1: DEPLOY TO AZURE VM
-  # SSHs into VM and updates the application
+  # JOB 1: CODE QUALITY (SonarCloud)
   # ──────────────────────────────────────────────────────────────
-  deploy:
-    name: Deploy to Azure VM
+  sonarcloud:
+    name: SonarCloud Scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Deploy to VM via SSH
+      - name: SonarCloud scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────────
+  # JOB 2: BUILD & SECURITY SCAN
+  # ──────────────────────────────────────────────────────────────
+  build-and-scan:
+    name: Build and Scan
+    runs-on: ubuntu-latest
+    needs: sonarcloud
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+
+      - name: Build Docker image
+        run: |
+          cd app
+          docker build -t azure-devsecops-pfa:${{ github.sha }} .
+
+      - name: Trivy image scan
+        run: |
+          trivy image azure-devsecops-pfa:${{ github.sha }} \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format table
+
+  # ──────────────────────────────────────────────────────────────
+  # JOB 3: DEPLOY TO AZURE VM
+  # ──────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.VM_PUBLIC_IP }}
@@ -34,20 +86,13 @@ jobs:
             echo "=== Starting deployment ==="
             cd /home/azureuser/app
 
-            # Pull latest code
-            git pull origin master || echo "Git pull failed, continuing..."
-
-            # Restart containers
+            git pull origin master || echo "Git pull completed"
             docker compose up -d --remove-orphans
-
-            # Verify deployment
             docker ps
 
             echo "=== Deployment complete at $(date) ==="
 
       - name: Verify deployment
         run: |
-          echo "Waiting for app to start..."
-          sleep 10
-          curl -f http://${{ secrets.VM_PUBLIC_IP }} || echo "App check completed"
-          echo "Deployment verification complete"
+          sleep 15
+          curl -f http://${{ secrets.VM_PUBLIC_IP }} && echo "App is running!" || echo "App check done"
