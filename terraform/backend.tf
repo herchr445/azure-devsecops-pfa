@@ -1,3 +1,4 @@
+# Remote backend - Azure Storage
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-rami-terraform-backend"
