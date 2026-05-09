@@ -1,16 +1,7 @@
 # ================================================================
 # PFA DevSecOps Project - Monitoring Infrastructure
 # Dedicated VM for Prometheus + Grafana
-# Separate from app VM for independence
 # ================================================================
-
-# ──────────────────────────────────────────────────────────────
-# MONITORING SUBNET
-# Separate subnet for monitoring VM
-# App subnet:     10.0.1.0/24 (rami-vm)
-# Data subnet:    10.0.2.0/24 (PostgreSQL)
-# Monitor subnet: 10.0.3.0/24 (monitor-vm)
-# ──────────────────────────────────────────────────────────────
 
 resource "azurerm_subnet" "monitor" {
   name                 = "${var.project_name}-subnet-monitor"
@@ -18,11 +9,6 @@ resource "azurerm_subnet" "monitor" {
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.3.0/24"]
 }
-
-# ──────────────────────────────────────────────────────────────
-# PUBLIC IP FOR MONITORING VM
-# Static IP so Grafana URL never changes
-# ──────────────────────────────────────────────────────────────
 
 resource "azurerm_public_ip" "monitor_ip" {
   name                = "${var.project_name}-monitor-ip"
@@ -33,11 +19,6 @@ resource "azurerm_public_ip" "monitor_ip" {
   tags                = local.common_tags
 }
 
-# ──────────────────────────────────────────────────────────────
-# NSG FOR MONITORING VM
-# Opens ports needed for Grafana and Prometheus
-# ──────────────────────────────────────────────────────────────
-
 resource "azurerm_network_security_group" "monitor_nsg" {
   name                = "${var.project_name}-monitor-nsg"
   location            = azurerm_resource_group.rg.location
@@ -45,7 +26,6 @@ resource "azurerm_network_security_group" "monitor_nsg" {
   tags                = local.common_tags
 }
 
-# SSH access to monitoring VM
 resource "azurerm_network_security_rule" "monitor_ssh" {
   name                        = "allow-ssh-monitor"
   priority                    = 100
@@ -60,7 +40,6 @@ resource "azurerm_network_security_rule" "monitor_ssh" {
   network_security_group_name = azurerm_network_security_group.monitor_nsg.name
 }
 
-# Grafana UI (port 3000)
 resource "azurerm_network_security_rule" "monitor_grafana" {
   name                        = "allow-grafana"
   priority                    = 110
@@ -75,7 +54,6 @@ resource "azurerm_network_security_rule" "monitor_grafana" {
   network_security_group_name = azurerm_network_security_group.monitor_nsg.name
 }
 
-# Prometheus UI (port 9090)
 resource "azurerm_network_security_rule" "monitor_prometheus" {
   name                        = "allow-prometheus"
   priority                    = 120
@@ -89,10 +67,6 @@ resource "azurerm_network_security_rule" "monitor_prometheus" {
   resource_group_name         = azurerm_resource_group.rg.name
   network_security_group_name = azurerm_network_security_group.monitor_nsg.name
 }
-
-# ──────────────────────────────────────────────────────────────
-# NETWORK INTERFACE FOR MONITORING VM
-# ──────────────────────────────────────────────────────────────
 
 resource "azurerm_network_interface" "monitor_nic" {
   name                = "${var.project_name}-monitor-nic"
@@ -108,18 +82,10 @@ resource "azurerm_network_interface" "monitor_nic" {
   }
 }
 
-# Associate NSG with monitoring NIC
 resource "azurerm_network_interface_security_group_association" "monitor_nsg_assoc" {
   network_interface_id      = azurerm_network_interface.monitor_nic.id
   network_security_group_id = azurerm_network_security_group.monitor_nsg.id
 }
-
-# ──────────────────────────────────────────────────────────────
-# MONITORING VM
-# Standard_B1s: 1 vCPU, 1GB RAM
-# Sufficient for Prometheus + Grafana (lightweight tools)
-# Cloud-init installs Docker + Prometheus + Grafana automatically
-# ──────────────────────────────────────────────────────────────
 
 resource "azurerm_linux_virtual_machine" "monitor_vm" {
   name                = "${var.project_name}-monitor-vm"
@@ -153,97 +119,8 @@ resource "azurerm_linux_virtual_machine" "monitor_vm" {
   }
 
   disable_password_authentication = true
-
-  # Cloud-init: Auto-installs Docker, Prometheus, Grafana
-  custom_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -e
-
-    echo "=== Installing Docker ==="
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-    usermod -aG docker ${var.admin_username}
-    systemctl enable docker
-    systemctl start docker
-
-    echo "=== Installing Docker Compose ==="
-    apt-get install -y docker-compose-plugin
-
-    echo "=== Creating monitoring directory ==="
-    mkdir -p /home/${var.admin_username}/monitoring
-    chown ${var.admin_username}:${var.admin_username} /home/${var.admin_username}/monitoring
-
-    echo "=== Creating Prometheus config ==="
-    cat > /home/${var.admin_username}/monitoring/prometheus.yml << 'PROMEOF'
-    global:
-      scrape_interval: 15s
-      evaluation_interval: 15s
-
-    scrape_configs:
-      - job_name: 'prometheus'
-        static_configs:
-          - targets: ['localhost:9090']
-
-      - job_name: 'app-vm-node-exporter'
-        static_configs:
-          - targets: ['10.0.1.4:9100']
-        relabel_configs:
-          - source_labels: [__address__]
-            target_label: instance
-            replacement: 'rami-vm'
-    PROMEOF
-
-    echo "=== Creating Docker Compose file ==="
-    cat > /home/${var.admin_username}/monitoring/docker-compose.yml << 'COMPEOF'
-    version: '3.8'
-    services:
-      prometheus:
-        image: prom/prometheus:latest
-        container_name: prometheus
-        ports:
-          - "9090:9090"
-        volumes:
-          - ./prometheus.yml:/etc/prometheus/prometheus.yml
-          - prometheus_data:/prometheus
-        command:
-          - '--config.file=/etc/prometheus/prometheus.yml'
-          - '--storage.tsdb.path=/prometheus'
-          - '--storage.tsdb.retention.time=7d'
-        restart: always
-
-      grafana:
-        image: grafana/grafana:latest
-        container_name: grafana
-        ports:
-          - "3000:3000"
-        environment:
-          - GF_SECURITY_ADMIN_USER=admin
-          - GF_SECURITY_ADMIN_PASSWORD=PfaAdmin2026!
-          - GF_USERS_ALLOW_SIGN_UP=false
-        volumes:
-          - grafana_data:/var/lib/grafana
-        restart: always
-        depends_on:
-          - prometheus
-
-    volumes:
-      prometheus_data:
-      grafana_data:
-    COMPEOF
-
-    echo "=== Starting monitoring stack ==="
-    cd /home/${var.admin_username}/monitoring
-    docker compose up -d
-
-    echo "=== Monitoring setup complete ==="
-    echo "Cloud-init completed at $(date)" > /home/${var.admin_username}/cloud-init-completed.txt
-  EOF
-  )
+  # cloud-init handled during initial deployment
 }
-
-# ──────────────────────────────────────────────────────────────
-# OUTPUTS
-# ──────────────────────────────────────────────────────────────
 
 output "monitor_vm_public_ip" {
   description = "Public IP of monitoring VM"
