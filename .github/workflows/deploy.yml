@@ -102,7 +102,7 @@ jobs:
           username: azureuser
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "app/docker-compose.yml"
-          target: "/home/azureuser/"
+          target: "/home/azureuser/app/"
           strip_components: 1
 
       - name: Deploy via SSH

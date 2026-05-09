@@ -38,9 +38,9 @@
     .badge.connected { background: #1e3a5f; color: #60a5fa; }
     .badge.success { background: #064e3b; color: #34d399; }
     .badge.failed { background: #7f1d1d; color: #f87171; }
-    .metric { text-align: center; }
-    .metric .value { font-size: 32px; font-weight: 700; color: #3b82f6; }
-    .metric .label { color: #64748b; font-size: 13px; margin-top: 4px; }
+    .badge.unhealthy { background: #7f1d1d; color: #f87171; }
+    .badge.unreachable { background: #7f1d1d; color: #f87171; }
+    .badge.timeout { background: #78350f; color: #fbbf24; }
     table { width: 100%; border-collapse: collapse; }
     th { color: #64748b; font-size: 12px; text-align: left; padding: 10px; border-bottom: 1px solid #2d3748; }
     td { padding: 12px 10px; border-bottom: 1px solid #1e2433; font-size: 14px; }
@@ -142,6 +142,25 @@
 
   </div>
 
+  <!-- Health Checks -->
+  <div class="full-card">
+    <h2>Infrastructure Health Checks <span style="color:#64748b;font-size:11px;font-weight:400;">— auto-refreshes every 5 minutes</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Status</th>
+          <th>Response</th>
+          <th>Last Checked</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody id="checks-table">
+        <tr><td colspan="5" style="color:#64748b;text-align:center;">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- Deployment History -->
   <div class="full-card">
     <h2>Recent Deployments</h2>
@@ -201,7 +220,7 @@
 
 <script>
   async function loadData() {
-    try {
+    try:
       // Load health status
       const health = await fetch('/api/health').then(r => r.json());
       document.getElementById('app-version').textContent = health.version || 'v1.0';
@@ -209,10 +228,30 @@
       document.getElementById('db-status').textContent = health.database === 'connected' ? 'Connected' : 'Disconnected';
       document.getElementById('db-status').className = `badge ${health.database === 'connected' ? 'connected' : 'failed'}`;
 
+      // Load health checks
+      const checks = await fetch('/api/checks').then(r => r.json());
+      const checksTbody = document.getElementById('checks-table');
+      if (checks.length === 0) {
+        checksTbody.innerHTML = '<tr><td colspan="5" style="color:#64748b;text-align:center;">No health checks yet — waiting for first cron run</td></tr>';
+      } else {
+        const latest = {};
+        checks.forEach(c => {
+          if (!latest[c.component]) latest[c.component] = c;
+        });
+        checksTbody.innerHTML = Object.values(latest).map(c => `
+          <tr>
+            <td style="color:#e2e8f0;font-weight:500;">${c.component}</td>
+            <td><span class="badge ${c.status === 'healthy' ? 'healthy' : 'failed'}">${c.status}</span></td>
+            <td style="color:#64748b;">${c.response_ms}ms</td>
+            <td style="color:#64748b;">${new Date(c.checked_at).toLocaleString()}</td>
+            <td style="color:#64748b;">${c.message || '-'}</td>
+          </tr>
+        `).join('');
+      }
+
       // Load deployments
       const deployments = await fetch('/api/deployments').then(r => r.json());
       const tbody = document.getElementById('deployments-table');
-
       if (deployments.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="color:#64748b;text-align:center;">No deployments yet</td></tr>';
       } else {
