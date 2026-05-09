@@ -220,7 +220,7 @@
 
 <script>
   async function loadData() {
-    try:
+    try {
       // Load health status
       const health = await fetch('/api/health').then(r => r.json());
       document.getElementById('app-version').textContent = health.version || 'v1.0';
