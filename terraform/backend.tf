@@ -5,4 +5,4 @@ terraform {
     container_name       = "tfstate"
     key                  = "rami-pfa.tfstate/terraform.tfstate"
   }
-}"# Updated permissions" 
+}
