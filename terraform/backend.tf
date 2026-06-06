@@ -1,3 +1,4 @@
+#test
 # Remote backend - Azure Storage
 terraform {
   backend "azurerm" {
