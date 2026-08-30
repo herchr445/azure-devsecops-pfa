@@ -24,4 +24,4 @@ Thumbs.db
 scripts/app.env
 scripts/health_check_results.log
 scripts/infrastructure_report.txt
-*.env
+*.envinfrastructure_report.txt 
